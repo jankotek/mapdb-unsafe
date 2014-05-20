@@ -6,7 +6,9 @@ import org.mapdb.Volume;
 import sun.misc.Unsafe;
 
 import java.io.File;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.concurrent.locks.ReentrantLock;
@@ -14,6 +16,25 @@ import java.util.concurrent.locks.ReentrantLock;
 public class UnsafeVolume extends Volume {
 
     protected static final Unsafe unsafe = getUnsafe();
+    protected static Class<? extends ByteBuffer> directByteBufferClass;
+    protected static Constructor<? extends ByteBuffer> directByteBufferConstructor;
+    
+    static {
+    	init();
+    }
+    
+    @SuppressWarnings("unchecked")
+	protected static void init() {
+    	try {
+			directByteBufferClass = (Class<? extends ByteBuffer>) Class.forName("java.nio.DirectByteBuffer");
+			directByteBufferConstructor = directByteBufferClass.getDeclaredConstructor(long.class, int.class);
+			directByteBufferConstructor.setAccessible(true);
+		} catch (Throwable t) {
+			System.err.println(
+					"Could not access to \"java.nio.DirectByteBuffer\" class/constructor to instantiate direct byte buffer");
+			t.printStackTrace();
+		} 
+    }
 
     @SuppressWarnings("restriction")
     private static Unsafe getUnsafe() {
@@ -99,7 +120,16 @@ public class UnsafeVolume extends Volume {
         }
     }
 
-
+    protected static ByteBuffer createDirectByteBuffer(long address, int size) {
+    	if (directByteBufferConstructor != null) {
+    		try {
+				return directByteBufferConstructor.newInstance(address, size);
+			} catch (Throwable t) {
+				t.printStackTrace();
+			} 
+    	}
+    	return null;
+    }
 
     protected volatile long[] addresses= new long[0];
 
@@ -266,19 +296,21 @@ public class UnsafeVolume extends Volume {
     public DataInput2 getDataInput(long offset, int size) {
         //*LOG*/ System.err.printf("getDataInput: offset:%d, size:%d\n",offset,size);
         //*LOG*/ System.err.flush();
-        byte[] dst = new byte[size];
-//        for(int pos=0;pos<size;pos++){
-//            dst[pos] = unsafe.getByte(address +offset+pos);
-//        }
 
         final long address = addresses[((int) (offset >>> chunkShift))];
         offset = offset & chunkSizeModMask;;
 
-        copyToArray(address+offset, dst, arrayBaseOffset,
-                0,
-                size);
-
-        return new DataInput2(dst);
+        ByteBuffer byteBuffer = createDirectByteBuffer(address + offset, size);
+        if (byteBuffer != null) {
+        	return new DataInput2(byteBuffer, 0);
+        }
+        else {
+        	byte[] dst = new byte[size];
+        	copyToArray(address+offset, dst, arrayBaseOffset,
+                    0,
+                    size);
+            return new DataInput2(dst);
+        }
     }
 
     @Override
