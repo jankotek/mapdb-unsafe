@@ -1,9 +1,3 @@
-```xml
-    <dependencies>
-        <dependency>
-            <groupId>org.mapdb</groupId>
-            <artifactId>mapdb-benchmarks</artifactId>
-            <version>0.1-SNAPSHOT</version>
-        </dependency>
-    </dependencies>
-```
+!!!OBSOLETE!!
+=================
+Unsafe is now part of MapDB 2.0. Use DBMaker.newMemoryUnsafeDB().make()
